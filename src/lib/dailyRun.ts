@@ -135,10 +135,11 @@ export async function runDailyCheck(today = todayUtc()): Promise<DailySummary> {
   const open = positions.filter((p) => p.sellDate === null);
   const closes = await getClosePrices(open.map((p) => p.ticker), today);
 
-  // Events 3 and 3a: one position loses more than 20% of its purchase value.
-  for (const p of open) {
-    const close = closes[p.ticker];
-    if (close == null || !breachesPositionLoss(p.buyPrice, close)) continue;
+  // Events 3 and 3a: one position loses more than 20% of its purchase value,
+  // at today's close or at the sale that closed it during this cycle.
+  for (const p of positions.filter((row) => row.sellDate === null || isInCycle(row.buyDate, cycleStart))) {
+    const exitPrice = p.sellDate === null ? closes[p.ticker] : p.sellPrice;
+    if (exitPrice == null || !breachesPositionLoss(p.buyPrice, exitPrice)) continue;
     const earlier = alerts.filter(
       (a) =>
         a.event === 'posicion_20' &&
@@ -153,8 +154,8 @@ export async function runDailyCheck(today = todayUtc()): Promise<DailySummary> {
       ticker: p.ticker,
       cycle_start: cycleStart,
       event: 'posicion_20',
-      event_date: today,
-      detail: `Pierde ${percent(positionLossRate(p.buyPrice, close))}: compra ${p.buyPrice}, cierre ${close.toFixed(2)}`,
+      event_date: p.sellDate ?? today,
+      detail: `${p.sellDate ? 'Vendida con pérdida de' : 'Pierde'} ${percent(positionLossRate(p.buyPrice, exitPrice))}: compra ${p.buyPrice}, ${p.sellDate ? 'venta' : 'cierre'} ${exitPrice.toFixed(2)}`,
       proposed_grade: positionFaultGrade(earlier),
       dedupe_key: `posicion_20:${p.id}`,
     });

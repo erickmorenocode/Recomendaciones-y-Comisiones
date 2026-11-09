@@ -4,8 +4,9 @@ import { api, ApiClientError, errorMessage } from '../../lib/apiClient';
 import type { CutResult } from '../../lib/commissions';
 import { cn } from '../../lib/cn';
 import { reportFileError, reportUrl, uploadReport } from '../../lib/reports';
-import type { RiskEvent } from '../../lib/risk';
+import { breachesPositionLoss, positionLossRate, RISK_EVENT_INFO as EVENT_INFO, SANCTIONS } from '../../lib/risk';
 import type { Movement, PositionView, RiskAlert, TraderDetail } from '../../lib/types';
+import { AlertSymbol } from './AlertSymbol';
 import { AnalystRatingsHover } from './AnalystRatingsHover';
 import { NewPositionForm } from './NewPositionForm';
 import {
@@ -40,18 +41,6 @@ const ACTION_LABELS: Record<string, string> = {
   falta_confirmada: 'Falta confirmada',
   falta_descartada: 'Falta descartada',
   bloqueo_levantado: 'Bloqueo levantado',
-};
-
-const EVENT_INFO: Record<RiskEvent, { label: string; action: string }> = {
-  posicion_20: { label: 'Posición con pérdida mayor al 20%', action: 'Cerrar solo esta posición' },
-  portafolio_40: { label: 'Portafolio con pérdida mayor al 40%', action: 'Cerrar todas las posiciones' },
-  corte_todo_perdida: { label: 'Todas las posiciones en pérdida al corte', action: 'Cerrar todas las posiciones' },
-};
-
-const SANCTIONS: Record<number, string> = {
-  1: 'Llamado de atención',
-  2: 'Bloqueo de recomendaciones',
-  3: 'Desvinculación',
 };
 
 const STATUS_LABELS: Record<RiskAlert['status'], string> = {
@@ -215,6 +204,30 @@ function CommissionsTable({ cuts }: { cuts: CutResult[] }) {
         ))}
       </tbody>
     </TableFrame>
+  );
+}
+
+/** Warns as soon as a loss shows up in the table, before the daily check records it. */
+function PositionAlert({ position, alerts }: { position: PositionView; alerts: RiskAlert[] }) {
+  const own = alerts.filter((a) => a.positionId === position.id);
+  const active = own.find((a) => a.status !== 'descartada');
+  if (active) return <AlertSymbol notes={[active]} />;
+
+  const exitPrice = position.sellPrice ?? position.marketPrice;
+  if (own.length > 0 || !position.inCycle || exitPrice == null || !breachesPositionLoss(position.buyPrice, exitPrice)) return null;
+  const lossPercent = (positionLossRate(position.buyPrice, exitPrice) * 100).toFixed(2);
+  return (
+    <AlertSymbol
+      notes={[
+        {
+          event: 'posicion_20',
+          ticker: position.ticker,
+          proposedGrade: 1,
+          detail: `${position.sellDate ? 'Vendida con pérdida de' : 'Pierde'} ${lossPercent}%: compra ${position.buyPrice}, ${position.sellDate ? 'venta' : 'precio actual'} ${exitPrice}`,
+        },
+      ]}
+      footer="Aviso previo: la revisión diaria registra la falta y define su grado final."
+    />
   );
 }
 
@@ -451,18 +464,12 @@ export function TraderProfile({
               </tr>
             </thead>
             <tbody>
-              {detail.positions.map((position) => {
-                const alert = detail.alerts.find((a) => a.positionId === position.id && a.status !== 'descartada');
-                return (
+              {detail.positions.map((position) => (
                 <tr key={position.id} className="border-b border-border/50 last:border-b-0">
                   <Td>
                     <span className="flex items-center gap-1">
                       <span className="font-mono text-accent">{position.ticker}</span>
-                      {alert && (
-                        <TriangleAlert size={13} className="text-danger shrink-0" role="img" aria-label={EVENT_INFO[alert.event].label}>
-                          <title>{`${EVENT_INFO[alert.event].label}. ${alert.detail}`}</title>
-                        </TriangleAlert>
-                      )}
+                      <PositionAlert position={position} alerts={detail.alerts} />
                     </span>
                     <AnalystRatingsHover symbol={position.ticker}>{position.companyName}</AnalystRatingsHover>
                   </Td>
@@ -522,8 +529,7 @@ export function TraderProfile({
                     </div>
                   </Td>
                 </tr>
-                );
-              })}
+              ))}
             </tbody>
           </TableFrame>
         )}

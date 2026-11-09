@@ -6,8 +6,14 @@ export interface TraderSummary {
   name: string;
   totalRecommended: number;
   openPositions: number;
-  pendingAlerts: number;
-  blocked: boolean;
+  alertNotes: AlertNote[];
+}
+
+export interface AlertNote {
+  event: RiskEvent;
+  ticker: string | null;
+  detail: string;
+  proposedGrade: number;
 }
 
 export interface RiskAlert {

@@ -1,8 +1,8 @@
-import { TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiClientError, errorMessage } from '../../lib/apiClient';
 import { cn } from '../../lib/cn';
 import type { TradersResponse } from '../../lib/types';
+import { AlertSymbol } from './AlertSymbol';
 import { TraderProfile } from './TraderProfile';
 import { Alert, Field, inputClass, money, primaryButton, secondaryButton } from './ui';
 
@@ -124,16 +124,7 @@ export function TradersTab() {
                 >
                   <span className="flex items-center gap-1 text-xs">
                     <span className="truncate">{trader.name}</span>
-                    {(trader.pendingAlerts > 0 || trader.blocked) && (
-                      <TriangleAlert
-                        size={13}
-                        className="text-danger shrink-0"
-                        role="img"
-                        aria-label={trader.blocked ? 'Operador bloqueado' : 'Tiene alertas pendientes'}
-                      >
-                        <title>{trader.blocked ? 'Operador bloqueado' : `${trader.pendingAlerts} alerta(s) pendiente(s)`}</title>
-                      </TriangleAlert>
-                    )}
+                    {trader.alertNotes.length > 0 && <AlertSymbol notes={trader.alertNotes} focusable={false} />}
                   </span>
                   <span className="block text-[10px] font-mono text-ink/60">USD {money(trader.totalRecommended)}</span>
                 </button>

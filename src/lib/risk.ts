@@ -13,6 +13,27 @@ export const PORTFOLIO_GRADE = 2;
 export const ALL_IN_LOSS_GRADE = 3;
 export const BLOCKING_GRADE = 2;
 
+export const SANCTIONS: Record<number, string> = {
+  1: 'Llamado de atención',
+  2: 'Bloqueo de recomendaciones',
+  3: 'Desvinculación',
+};
+
+export const RISK_EVENT_INFO: Record<RiskEvent, { label: string; action: string }> = {
+  posicion_20: { label: 'Posición con pérdida mayor al 20%', action: 'Cerrar solo esta posición' },
+  portafolio_40: { label: 'Portafolio con pérdida mayor al 40%', action: 'Cerrar todas las posiciones' },
+  corte_todo_perdida: { label: 'Todas las posiciones en pérdida al corte', action: 'Cerrar todas las posiciones' },
+};
+
+/** The rule as the Manual words it. Grade 2 on a position means event 3a, the repeated fault. */
+export function infringedRule(event: RiskEvent, grade: number): string {
+  if (event === 'portafolio_40') return 'La pérdida a mercado del portafolio supera el 40% del total recomendado';
+  if (event === 'corte_todo_perdida') return 'En una fecha de corte todas las posiciones están en pérdida';
+  return grade >= 2
+    ? 'Una posición pierde más del 20% de su valor de compra, y se repite en otra posición dentro del mismo ciclo'
+    : 'Una posición pierde más del 20% de su valor de compra';
+}
+
 export interface RiskPosition {
   ticker: string;
   buyPrice: number;
@@ -51,7 +72,16 @@ export const allOpenInLoss = (open: RiskPosition[], prices: Record<string, numbe
 /** Event 3a: a repeated first-grade fault within the cycle rises to second grade. */
 export const positionFaultGrade = (earlierFaultsInCycle: number) => (earlierFaultsInCycle > 0 ? 2 : 1);
 
-/** Blocked while a confirmed fault of second grade or higher has not been lifted. */
-export function isBlocked(alerts: Array<{ status: string; proposed_grade: number; block_lifted_at: string | null }>): boolean {
-  return alerts.some((a) => a.status === 'confirmada' && a.proposed_grade >= BLOCKING_GRADE && a.block_lifted_at === null);
+interface AlertState {
+  status: string;
+  proposed_grade: number;
+  block_lifted_at: string | null;
 }
+
+const blocksOperator = (a: AlertState) => a.status === 'confirmada' && a.proposed_grade >= BLOCKING_GRADE && a.block_lifted_at === null;
+
+/** Blocked while a confirmed fault of second grade or higher has not been lifted. */
+export const isBlocked = (alerts: AlertState[]) => alerts.some(blocksOperator);
+
+/** Alerts that still call for attention: awaiting a decision, or holding a block. */
+export const needsAttention = (a: AlertState) => a.status === 'pendiente' || blocksOperator(a);

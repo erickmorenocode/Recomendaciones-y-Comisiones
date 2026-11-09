@@ -1,6 +1,6 @@
 import { db, route, unwrap } from '@/src/lib/api';
 import { isInCycle, positionCost } from '@/src/lib/commissions';
-import { isBlocked } from '@/src/lib/risk';
+import { needsAttention } from '@/src/lib/risk';
 import type { TradersResponse } from '@/src/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -11,7 +11,7 @@ export const GET = route<unknown>(async (): Promise<TradersResponse> => {
     client.from('traders').select('id, name').order('id'),
     client.from('app_settings').select('cycle_start').eq('id', 1).single(),
     client.from('positions').select('trader_id, buy_price, shares, buy_date, sell_date').is('deleted_at', null),
-    client.from('risk_alerts').select('trader_id, status, proposed_grade, block_lifted_at'),
+    client.from('risk_alerts').select('trader_id, event, ticker, detail, status, proposed_grade, block_lifted_at'),
   ]);
   const cycleStart = unwrap(settings).cycle_start as string | null;
   const rows = unwrap(positions);
@@ -23,7 +23,6 @@ export const GET = route<unknown>(async (): Promise<TradersResponse> => {
       const own = rows.filter(
         (p) => p.trader_id === trader.id && (cycleStart === null || isInCycle(p.buy_date, cycleStart)),
       );
-      const ownAlerts = alerts.filter((a) => a.trader_id === trader.id);
       return {
         id: trader.id,
         name: trader.name,
@@ -32,8 +31,9 @@ export const GET = route<unknown>(async (): Promise<TradersResponse> => {
           0,
         ),
         openPositions: own.filter((p) => p.sell_date === null).length,
-        pendingAlerts: ownAlerts.filter((a) => a.status === 'pendiente').length,
-        blocked: isBlocked(ownAlerts),
+        alertNotes: alerts
+          .filter((a) => a.trader_id === trader.id && needsAttention(a))
+          .map((a) => ({ event: a.event, ticker: a.ticker, detail: a.detail, proposedGrade: a.proposed_grade })),
       };
     }),
   };
