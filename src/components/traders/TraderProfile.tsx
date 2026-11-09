@@ -3,6 +3,7 @@ import { api, ApiClientError, errorMessage } from '../../lib/apiClient';
 import type { CutResult } from '../../lib/commissions';
 import { cn } from '../../lib/cn';
 import type { Movement, PositionView, TraderDetail } from '../../lib/types';
+import { AnalystRatingsHover } from './AnalystRatingsHover';
 import { NewPositionForm } from './NewPositionForm';
 import {
   Alert,
@@ -255,7 +256,7 @@ export function TraderProfile({
                 <tr key={position.id} className="border-b border-border/50 last:border-b-0">
                   <Td>
                     <span className="font-mono text-accent">{position.ticker}</span>
-                    <span className="block text-ink/60">{position.companyName}</span>
+                    <AnalystRatingsHover symbol={position.ticker}>{position.companyName}</AnalystRatingsHover>
                   </Td>
                   <Td className="whitespace-nowrap font-mono">{position.buyDate}</Td>
                   <Td right>{quantity(position.shares)}</Td>

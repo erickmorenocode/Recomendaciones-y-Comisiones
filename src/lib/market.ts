@@ -1,5 +1,6 @@
 // Server only: Yahoo Finance access through yahoo-finance2.
 import YahooFinance from 'yahoo-finance2';
+import type { AnalystRatings } from './types';
 
 const yahooFinance = new YahooFinance();
 
@@ -72,6 +73,20 @@ export async function getClosePrices(symbols: string[], date: string): Promise<R
     [...new Set(symbols)].map(async (symbol) => [symbol, await getCloseOnOrBefore(symbol, date)] as const),
   );
   return Object.fromEntries(entries.filter((entry): entry is [string, number] => entry[1] !== null));
+}
+
+/** Analyst recommendation counts for the current month, or null if Yahoo has none. */
+export async function getAnalystRatings(symbol: string): Promise<AnalystRatings | null> {
+  try {
+    const summary = await yahooFinance.quoteSummary(symbol, { modules: ['recommendationTrend'] });
+    const current = summary.recommendationTrend?.trend.find((entry) => entry.period === '0m');
+    if (!current) return null;
+    const { strongBuy, buy, hold, sell, strongSell } = current;
+    return strongBuy + buy + hold + sell + strongSell > 0 ? { strongBuy, buy, hold, sell, strongSell } : null;
+  } catch (error) {
+    console.error(`Yahoo recommendations failed for ${symbol}:`, error);
+    return null;
+  }
 }
 
 interface RawSearchQuote {

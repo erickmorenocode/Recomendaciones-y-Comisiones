@@ -46,6 +46,14 @@ export interface Movement {
   after: Record<string, unknown> | null;
 }
 
+export interface AnalystRatings {
+  strongBuy: number;
+  buy: number;
+  hold: number;
+  sell: number;
+  strongSell: number;
+}
+
 export interface CompanyOption {
   symbol: string;
   name: string;
