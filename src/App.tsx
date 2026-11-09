@@ -1,16 +1,17 @@
 import { useState } from 'react';
 import { Manual } from './components/Manual';
+import { TradersTab } from './components/traders/TradersTab';
 import { cn } from './lib/cn';
 
 const TABS = [
-  { key: 'panel', label: 'Panel' },
+  { key: 'traders', label: 'Traders' },
   { key: 'manual', label: 'Manual' },
 ] as const;
 
 type TabKey = (typeof TABS)[number]['key'];
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<TabKey>('manual');
+  const [activeTab, setActiveTab] = useState<TabKey>('traders');
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -37,13 +38,7 @@ export default function App() {
       </div>
 
       <main className="flex-1 w-full p-4 sm:p-6 max-w-[1600px] mx-auto">
-        {activeTab === 'manual' ? (
-          <Manual />
-        ) : (
-          <section className="glass rounded-xl p-6">
-            <p className="text-sm text-ink/70">Sin contenido todavía.</p>
-          </section>
-        )}
+        {activeTab === 'traders' ? <TradersTab /> : <Manual />}
       </main>
 
       <footer className="border-t border-border p-6 mt-12 glass" />
