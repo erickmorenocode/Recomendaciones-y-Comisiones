@@ -19,6 +19,7 @@ import {
   rowAction,
   secondaryButton,
   SignedMoney,
+  SignedPercent,
   TableFrame,
   Td,
   Th,
@@ -439,10 +440,11 @@ export function TraderProfile({
                 <Th>Empresa</Th>
                 <Th>Compra</Th>
                 <Th right>Acciones</Th>
-                <Th right>Precio compra</Th>
-                <Th right>Total (USD)</Th>
-                <Th right>Mercado / venta</Th>
-                <Th right>Resultado (USD)</Th>
+                <Th right>Precio<br />compra</Th>
+                <Th right>Total<br />(USD)</Th>
+                <Th right>Mercado<br />/ venta</Th>
+                <Th right>Resultado<br />(USD)</Th>
+                <Th right>Resultado<br />(%)</Th>
                 <Th>Estado</Th>
                 <Th>Informe</Th>
                 <Th />
@@ -476,6 +478,7 @@ export function TraderProfile({
                         : 'Sin precio'}
                   </Td>
                   <Td right>{position.result != null ? <SignedMoney value={position.result} /> : 'Sin precio'}</Td>
+                  <Td right>{position.result != null ? <SignedPercent value={(position.result / position.total) * 100} /> : 'Sin precio'}</Td>
                   <Td className="whitespace-nowrap">
                     {position.sellDate ? `Vendida ${position.sellDate}` : 'Abierta'}
                     {!position.inCycle && <span className="block text-danger">Fuera del ciclo</span>}

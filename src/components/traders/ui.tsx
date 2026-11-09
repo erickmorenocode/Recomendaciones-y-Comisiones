@@ -36,6 +36,15 @@ export function SignedMoney({ value }: { value: number }) {
   );
 }
 
+export function SignedPercent({ value }: { value: number }) {
+  return (
+    <span className={cn(value < 0 && 'text-danger', value > 0 && 'text-accent')}>
+      {value > 0 ? '+' : ''}
+      {money(value)}%
+    </span>
+  );
+}
+
 export function Card({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="glass rounded-xl p-4 sm:p-6 space-y-4">
