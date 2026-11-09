@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiClientError, errorMessage } from '../../lib/apiClient';
 import type { CutResult } from '../../lib/commissions';
 import { cn } from '../../lib/cn';
+import { reportFileError, reportUrl, uploadReport } from '../../lib/reports';
 import type { Movement, PositionView, TraderDetail } from '../../lib/types';
 import { AnalystRatingsHover } from './AnalystRatingsHover';
 import { NewPositionForm } from './NewPositionForm';
@@ -69,7 +70,47 @@ function describeMovement(movement: Movement): string {
   const changes = Object.keys(FIELD_LABELS)
     .filter((field) => field in after && before[field] !== after[field])
     .map((field) => `${FIELD_LABELS[field]}: ${before[field] ?? 'sin valor'} → ${after[field] ?? 'sin valor'}`);
+  if (after.report_path && before.report_path !== after.report_path) changes.push('Informe PDF adjuntado');
   return changes.join(' · ');
+}
+
+function ReportCell({ position, run }: { position: PositionView; run: (action: () => Promise<unknown>) => Promise<void> }) {
+  const [uploading, setUploading] = useState(false);
+
+  if (position.hasReport) {
+    return (
+      <a className={rowAction} href={reportUrl(position.id)} target="_blank" rel="noopener noreferrer">
+        Ver PDF
+      </a>
+    );
+  }
+  if (uploading) return <span className="text-[11px] text-ink/60">Subiendo...</span>;
+
+  async function upload(file: File) {
+    setUploading(true);
+    await run(async () => {
+      const problem = reportFileError(file);
+      if (problem) throw new Error(problem);
+      await uploadReport(position.id, file);
+    });
+    setUploading(false);
+  }
+
+  return (
+    <label className={cn(rowAction, 'cursor-pointer focus-within:text-accent')}>
+      Subir PDF
+      <input
+        className="sr-only"
+        type="file"
+        accept="application/pdf,.pdf"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          if (file) void upload(file);
+        }}
+      />
+    </label>
+  );
 }
 
 function PositionPanel({
@@ -248,6 +289,7 @@ export function TraderProfile({
                 <Th right>Mercado / venta</Th>
                 <Th right>Resultado (USD)</Th>
                 <Th>Estado</Th>
+                <Th>Informe</Th>
                 <Th />
               </tr>
             </thead>
@@ -273,6 +315,9 @@ export function TraderProfile({
                   <Td className="whitespace-nowrap">
                     {position.sellDate ? `Vendida ${position.sellDate}` : 'Abierta'}
                     {!position.inCycle && <span className="block text-danger">Fuera del ciclo</span>}
+                  </Td>
+                  <Td className="whitespace-nowrap">
+                    <ReportCell position={position} run={run} />
                   </Td>
                   <Td className="whitespace-nowrap">
                     <div className="flex gap-3">

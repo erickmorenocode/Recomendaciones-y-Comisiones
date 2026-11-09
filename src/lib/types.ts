@@ -25,6 +25,7 @@ export interface PositionView {
   marketPrice: number | null;
   result: number | null;
   inCycle: boolean;
+  hasReport: boolean;
 }
 
 export interface TraderDetail {

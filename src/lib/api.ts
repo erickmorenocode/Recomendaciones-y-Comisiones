@@ -23,7 +23,8 @@ export function route<Context>(handler: (req: NextRequest, context: Context) => 
     try {
       if (!isAuthConfigured()) throw new ApiError(503, 'Falta configurar APP_PASSWORD y SESSION_SECRET');
       if (!isValidSessionToken(req.cookies.get(SESSION_COOKIE)?.value)) throw new ApiError(401, 'Sesión no válida');
-      return NextResponse.json((await handler(req, context)) ?? { ok: true });
+      const result = await handler(req, context);
+      return result instanceof Response ? result : NextResponse.json(result ?? { ok: true });
     } catch (error) {
       return errorResponse(error);
     }

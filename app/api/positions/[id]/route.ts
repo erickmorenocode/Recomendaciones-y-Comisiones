@@ -1,25 +1,9 @@
-import { ApiError, assertSaleAfterBuy, db, jsonBody, parsePastDate, parsePositive, route, unwrap } from '@/src/lib/api';
+import { ApiError, assertSaleAfterBuy, jsonBody, parsePastDate, parsePositive, route } from '@/src/lib/api';
+import { loadPosition, savePosition } from '@/src/lib/positions';
 
 export const dynamic = 'force-dynamic';
 
 type Context = { params: Promise<{ id: string }> };
-
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-async function loadPosition(id: string) {
-  if (!UUID.test(id)) throw new ApiError(404, 'Posición no encontrada');
-  const { data, error } = await db().from('positions').select('*').eq('id', id).is('deleted_at', null).maybeSingle();
-  if (error) {
-    console.error(error.message);
-    throw new ApiError(500, 'Error de base de datos');
-  }
-  if (!data) throw new ApiError(404, 'Posición no encontrada');
-  return data;
-}
-
-async function savePosition(id: string, changes: Record<string, unknown>) {
-  unwrap(await db().from('positions').update(changes).eq('id', id).is('deleted_at', null).select('id').single());
-}
 
 export const PATCH = route<Context>(async (req, { params }) => {
   const { id } = await params;

@@ -37,6 +37,7 @@ export const GET = route<Context>(async (_req, { params }): Promise<TraderDetail
     shares: row.shares as number,
     sellDate: row.sell_date as string | null,
     sellPrice: row.sell_price as number | null,
+    hasReport: Boolean(row.report_path),
   }));
 
   const openTickers = positions.filter((p) => p.sellDate === null).map((p) => p.ticker);
