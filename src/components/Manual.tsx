@@ -19,7 +19,7 @@ const KEY_RULES = [
   { value: '20%', label: 'Participación del operador en ganancias y pérdidas' },
   { value: '10%', label: 'Umbral de pérdida sobre el capital original del ciclo' },
   { value: '6 meses', label: 'Fechas de corte: mes 6 y mes 12 de cada ciclo' },
-  { value: 'USD 400,000', label: 'Monto máximo recomendado por operador' },
+  { value: 'USD 200,000', label: 'Monto máximo recomendado por operador' },
 ];
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -476,18 +476,18 @@ export function Manual() {
 
         <Section id="riesgo" title="7. Políticas de riesgo y régimen de faltas">
           <P>
-            Cada operador puede recomendar hasta USD 400,000, sin que una sola posición supere el 20% de ese total. Las
+            Cada operador puede recomendar hasta USD 200,000, sin que una sola posición supere el 20% de ese total. Las
             pérdidas activan cierres obligatorios y faltas de tres niveles, que van del llamado de atención a la
             desvinculación.
           </P>
           <Subheading>Límites de asignación</Subheading>
           <P>
-            Monto máximo por operador: USD 400,000 en recomendaciones. Con ese monto, el umbral de corresponsabilidad de
-            la sección 2 es de USD 40,000.
+            Monto máximo por operador: USD 200,000 en recomendaciones. Con ese monto, el umbral de corresponsabilidad de
+            la sección 2 es de USD 20,000.
           </P>
           <P>
             Concentración máxima por posición: ninguna posición puede representar más del 20% del total recomendado al
-            momento de la compra (hasta USD 80,000 con el monto máximo).
+            momento de la compra (hasta USD 40,000 con el monto máximo).
           </P>
           <Subheading>Cierres obligatorios y faltas</Subheading>
           <Table
@@ -499,7 +499,7 @@ export function Manual() {
               ['5', 'En una fecha de corte todas las posiciones están en pérdida', 'Fecha de corte', 'Se cierran todas las posiciones', 'Tercer grado', 'Desvinculación'],
             ]}
           />
-          <P>Con el monto máximo de USD 400,000, el evento 4 se activa con una pérdida a mercado mayor a USD 160,000.</P>
+          <P>Con el monto máximo de USD 200,000, el evento 4 se activa con una pérdida a mercado mayor a USD 80,000.</P>
           <P>
             Todo cierre obligatorio convierte las pérdidas abiertas en realizadas. La corresponsabilidad del 20% de la
             sección 3 se aplica sobre ese resultado.
