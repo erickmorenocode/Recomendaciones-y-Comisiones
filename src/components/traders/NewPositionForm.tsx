@@ -80,14 +80,14 @@ export function NewPositionForm({ traderId, onSaved }: { traderId: number; onSav
                 <li key={option.symbol}>
                   <button
                     type="button"
-                    className="w-full text-left px-3 py-2 text-xs hover:bg-bg transition-colors"
+                    className="w-full text-left px-3 py-2 text-xs hover:bg-accent/5 transition-colors"
                     onClick={() => {
                       setCompany(option);
                       setQuery(`${option.symbol} · ${option.name}`);
                     }}
                   >
                     <span className="font-mono text-accent">{option.symbol}</span> {option.name}
-                    {option.exchange && <span className="text-ink/50"> · {option.exchange}</span>}
+                    {option.exchange && <span className="text-ink/60"> ·{option.exchange}</span>}
                   </button>
                 </li>
               ))}

@@ -339,7 +339,7 @@ export function TraderProfile({
                       {detail.commissions.cuts.map((cut) => (
                         <Th key={cut.label} right>
                           {cut.label}
-                          <span className="block text-ink/50 normal-case tracking-normal">{cut.date}</span>
+                          <span className="block text-ink/60 normal-case tracking-normal">{cut.date}</span>
                         </Th>
                       ))}
                     </tr>

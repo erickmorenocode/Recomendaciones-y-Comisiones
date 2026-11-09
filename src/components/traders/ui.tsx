@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { cn } from '../../lib/cn';
 
 export const inputClass =
-  'w-full rounded-lg bg-bg border border-border px-3 py-2 text-sm [color-scheme:dark] focus:outline-none focus:border-accent';
+  'w-full rounded-lg bg-bg border border-border px-3 py-2 text-sm [color-scheme:light] focus:outline-none focus:border-accent';
 
 export const primaryButton =
   'rounded-lg bg-accent text-bg px-4 py-2 text-xs font-semibold hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed';

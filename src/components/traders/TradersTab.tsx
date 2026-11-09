@@ -108,7 +108,7 @@ export function TradersTab() {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       <aside className="lg:col-span-3 xl:col-span-2 space-y-4">
         <nav className="glass rounded-xl p-3" aria-label="Perfiles de traders">
-          <p className="text-[10px] font-mono uppercase tracking-widest text-ink/50 mb-2 px-1">Perfiles</p>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-ink/60 mb-2 px-1">Perfiles</p>
           <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-1 gap-1">
             {data.traders.map((trader) => (
               <li key={trader.id}>
@@ -118,11 +118,11 @@ export function TradersTab() {
                   aria-current={selectedId === trader.id ? 'true' : undefined}
                   className={cn(
                     'w-full text-left rounded-lg px-2 py-1.5 transition-colors border',
-                    selectedId === trader.id ? 'border-accent' : 'border-transparent hover:bg-bg',
+                    selectedId === trader.id ? 'border-accent' : 'border-transparent hover:bg-accent/5',
                   )}
                 >
                   <span className="block text-xs truncate">{trader.name}</span>
-                  <span className="block text-[10px] font-mono text-ink/50">USD {money(trader.totalRecommended)}</span>
+                  <span className="block text-[10px] font-mono text-ink/60">USD {money(trader.totalRecommended)}</span>
                 </button>
               </li>
             ))}

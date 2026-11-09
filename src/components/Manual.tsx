@@ -120,7 +120,7 @@ export function Manual() {
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
       <aside className="lg:col-span-3 xl:col-span-2">
         <nav className="glass rounded-xl p-4 lg:sticky lg:top-32" aria-label="Índice del manual">
-          <p className="text-[10px] font-mono uppercase tracking-widest text-ink/50 mb-3">Índice</p>
+          <p className="text-[10px] font-mono uppercase tracking-widest text-ink/60 mb-3">Índice</p>
           <ul className="space-y-2">
             {INDEX.map((item) => (
               <li key={item.id}>
