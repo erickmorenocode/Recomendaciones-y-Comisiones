@@ -389,14 +389,16 @@ export function TraderProfile({
   }
 
   const lastCut = detail.commissions?.cuts.at(-1);
-  const carriedNet = detail.carried.reduce((sum, cycle) => sum + (cycle.commissions.cuts.at(-1)?.net ?? 0), 0);
+  const carriedTotal = (key: 'net' | 'discountCum' | 'retention') =>
+    detail.carried.reduce((sum, cycle) => sum + (cycle.commissions.cuts.at(-1)?.[key] ?? 0), 0);
   const saveName = () => run(() => api(`/api/traders/${traderId}`, 'PATCH', { name }));
 
   const stats = [
     { label: 'Total recomendado (USD)', value: <>{money(detail.totalRecommended)}</> },
     { label: 'Umbral de pérdida, 10% (USD)', value: <>{money(detail.totalRecommended * 0.1)}</> },
-    { label: 'Resultado neto a mercado (USD)', value: lastCut ? <SignedMoney value={lastCut.marketResult} /> : 'Sin calcular' },
-    { label: 'Consolidado a cobrar o deber (USD)', value: lastCut ? <SignedMoney value={lastCut.net + carriedNet} /> : 'Sin calcular' },
+    { label: 'Descuento definitivo (USD)', value: lastCut ? money(lastCut.discountCum + carriedTotal('discountCum')) : 'Sin calcular' },
+    { label: 'Retención (USD)', value: lastCut ? money(lastCut.retention + carriedTotal('retention')) : 'Sin calcular' },
+    { label: 'Consolidado a cobrar o deber (USD)', value: lastCut ? <SignedMoney value={lastCut.net + carriedTotal('net')} /> : 'Sin calcular' },
   ];
 
   return (
@@ -416,7 +418,7 @@ export function TraderProfile({
 
       <AlertsCard alerts={detail.alerts} blocked={detail.blocked} run={run} />
 
-      <dl className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      <dl className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-5 gap-3">
         {stats.map((stat) => (
           <div key={stat.label} className="glass rounded-xl p-4">
             <dd className="text-xl font-mono">{stat.value}</dd>
