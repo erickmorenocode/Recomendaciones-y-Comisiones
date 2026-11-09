@@ -10,7 +10,7 @@ export const primaryButton =
 export const secondaryButton =
   'rounded-lg border border-border px-3 py-2 text-xs text-ink/70 hover:text-ink transition-colors';
 
-export const rowAction = 'text-[11px] text-ink/60 hover:text-accent transition-colors';
+export const rowAction = 'inline-flex p-1 rounded text-ink/60 hover:text-accent transition-colors';
 
 const moneyFormat = new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const sharesFormat = new Intl.NumberFormat('en-US', { maximumFractionDigits: 6 });

@@ -1,3 +1,4 @@
+import { CircleDollarSign, FileText, LoaderCircle, Pencil, Trash2, Undo2, Upload } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiClientError, errorMessage } from '../../lib/apiClient';
 import type { CutResult } from '../../lib/commissions';
@@ -79,12 +80,18 @@ function ReportCell({ position, run }: { position: PositionView; run: (action: (
 
   if (position.hasReport) {
     return (
-      <a className={rowAction} href={reportUrl(position.id)} target="_blank" rel="noopener noreferrer">
-        Ver PDF
+      <a className={rowAction} href={reportUrl(position.id)} target="_blank" rel="noopener noreferrer" title="Ver PDF" aria-label="Ver PDF">
+        <FileText size={16} />
       </a>
     );
   }
-  if (uploading) return <span className="text-[11px] text-ink/60">Subiendo...</span>;
+  if (uploading) {
+    return (
+      <span className={rowAction} role="status" title="Subiendo PDF" aria-label="Subiendo PDF">
+        <LoaderCircle size={16} className="animate-spin" />
+      </span>
+    );
+  }
 
   async function upload(file: File) {
     setUploading(true);
@@ -97,10 +104,11 @@ function ReportCell({ position, run }: { position: PositionView; run: (action: (
   }
 
   return (
-    <label className={cn(rowAction, 'cursor-pointer focus-within:text-accent')}>
-      Subir PDF
+    <label className={cn(rowAction, 'cursor-pointer focus-within:text-accent')} title="Subir PDF">
+      <Upload size={16} />
       <input
         className="sr-only"
+        aria-label="Subir PDF"
         type="file"
         accept="application/pdf,.pdf"
         onChange={(e) => {
@@ -320,29 +328,37 @@ export function TraderProfile({
                     <ReportCell position={position} run={run} />
                   </Td>
                   <Td className="whitespace-nowrap">
-                    <div className="flex gap-3">
+                    <div className="flex gap-1">
                       {position.sellDate === null ? (
-                        <button type="button" className={rowAction} onClick={() => setPanel({ mode: 'sell', position })}>Vender</button>
+                        <button type="button" className={rowAction} title="Vender" aria-label="Vender" onClick={() => setPanel({ mode: 'sell', position })}>
+                          <CircleDollarSign size={16} />
+                        </button>
                       ) : (
                         <button
                           type="button"
                           className={rowAction}
+                          title="Revertir venta"
+                          aria-label="Revertir venta"
                           onClick={() => run(() => api(`/api/positions/${position.id}`, 'PATCH', { action: 'unsell' }))}
                         >
-                          Revertir venta
+                          <Undo2 size={16} />
                         </button>
                       )}
-                      <button type="button" className={rowAction} onClick={() => setPanel({ mode: 'edit', position })}>Editar</button>
+                      <button type="button" className={rowAction} title="Editar" aria-label="Editar" onClick={() => setPanel({ mode: 'edit', position })}>
+                        <Pencil size={16} />
+                      </button>
                       <button
                         type="button"
                         className={rowAction}
+                        title="Eliminar"
+                        aria-label="Eliminar"
                         onClick={() => {
                           if (window.confirm(`¿Eliminar la compra de ${position.ticker}? Quedará registrada en el histórico.`)) {
                             void run(() => api(`/api/positions/${position.id}`, 'DELETE'));
                           }
                         }}
                       >
-                        Eliminar
+                        <Trash2 size={16} />
                       </button>
                     </div>
                   </Td>
