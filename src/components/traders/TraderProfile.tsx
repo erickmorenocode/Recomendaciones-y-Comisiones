@@ -1,10 +1,11 @@
-import { CircleDollarSign, FileText, LoaderCircle, Pencil, Trash2, Undo2, Upload } from 'lucide-react';
+import { Check, CircleDollarSign, FileText, LoaderCircle, Pencil, ShieldOff, Trash2, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiClientError, errorMessage } from '../../lib/apiClient';
 import type { CutResult } from '../../lib/commissions';
 import { cn } from '../../lib/cn';
 import { reportFileError, reportUrl, uploadReport } from '../../lib/reports';
-import type { Movement, PositionView, TraderDetail } from '../../lib/types';
+import type { RiskEvent } from '../../lib/risk';
+import type { Movement, PositionView, RiskAlert, TraderDetail } from '../../lib/types';
 import { AnalystRatingsHover } from './AnalystRatingsHover';
 import { NewPositionForm } from './NewPositionForm';
 import {
@@ -34,6 +35,28 @@ const ACTION_LABELS: Record<string, string> = {
   venta_revertida: 'Venta revertida',
   perfil_editado: 'Perfil editado',
   ciclo_editado: 'Inicio de ciclo editado',
+  alerta_generada: 'Alerta generada',
+  falta_confirmada: 'Falta confirmada',
+  falta_descartada: 'Falta descartada',
+  bloqueo_levantado: 'Bloqueo levantado',
+};
+
+const EVENT_INFO: Record<RiskEvent, { label: string; action: string }> = {
+  posicion_20: { label: 'Posición con pérdida mayor al 20%', action: 'Cerrar solo esta posición' },
+  portafolio_40: { label: 'Portafolio con pérdida mayor al 40%', action: 'Cerrar todas las posiciones' },
+  corte_todo_perdida: { label: 'Todas las posiciones en pérdida al corte', action: 'Cerrar todas las posiciones' },
+};
+
+const SANCTIONS: Record<number, string> = {
+  1: 'Llamado de atención',
+  2: 'Bloqueo de recomendaciones',
+  3: 'Desvinculación',
+};
+
+const STATUS_LABELS: Record<RiskAlert['status'], string> = {
+  pendiente: 'Pendiente',
+  confirmada: 'Confirmada',
+  descartada: 'Descartada',
 };
 
 const FIELD_LABELS: Record<string, string> = {
@@ -67,12 +90,131 @@ const dateTime = new Intl.DateTimeFormat('es', { dateStyle: 'short', timeStyle: 
 function describeMovement(movement: Movement): string {
   const { before, after } = movement;
   if (!after) return '';
+  if (typeof after.detail === 'string') return after.detail;
   if (!before) return `${quantity(Number(after.shares))} acciones a ${after.buy_price} el ${after.buy_date}`;
   const changes = Object.keys(FIELD_LABELS)
     .filter((field) => field in after && before[field] !== after[field])
     .map((field) => `${FIELD_LABELS[field]}: ${before[field] ?? 'sin valor'} → ${after[field] ?? 'sin valor'}`);
   if (after.report_path && before.report_path !== after.report_path) changes.push('Informe PDF adjuntado');
   return changes.join(' · ');
+}
+
+function AlertsCard({
+  alerts,
+  blocked,
+  run,
+}: {
+  alerts: RiskAlert[];
+  blocked: boolean;
+  run: (action: () => Promise<unknown>) => Promise<void>;
+}) {
+  const act = (alert: RiskAlert, action: 'confirm' | 'dismiss' | 'lift', question?: string) => {
+    if (question && !window.confirm(question)) return;
+    void run(() => api(`/api/alerts/${alert.id}`, 'PATCH', { action }));
+  };
+
+  return (
+    <Card title={`Alertas y faltas (${alerts.length})`}>
+      {blocked && (
+        <p role="alert" className="flex items-center gap-2 text-sm font-semibold text-danger">
+          <TriangleAlert size={16} className="shrink-0" />
+          Operador bloqueado: no puede abrir nuevas recomendaciones.
+        </p>
+      )}
+      {alerts.length === 0 ? (
+        <p className="text-sm text-ink/60">Sin alertas.</p>
+      ) : (
+        <TableFrame>
+          <thead>
+            <tr className="border-b border-border">
+              <Th>Fecha</Th>
+              <Th>Empresa</Th>
+              <Th>Evento</Th>
+              <Th>Acción del Manual</Th>
+              <Th>Falta propuesta</Th>
+              <Th>Estado</Th>
+              <Th />
+            </tr>
+          </thead>
+          <tbody>
+            {alerts.map((alert) => (
+              <tr key={alert.id} className="border-b border-border/50 last:border-b-0">
+                <Td className="whitespace-nowrap font-mono">{alert.eventDate}</Td>
+                <Td className="font-mono text-accent">{alert.ticker ?? 'Portafolio'}</Td>
+                <Td>
+                  {EVENT_INFO[alert.event].label}
+                  <span className="block text-ink/60">{alert.detail}</span>
+                </Td>
+                <Td>{EVENT_INFO[alert.event].action}</Td>
+                <Td>
+                  Grado {alert.proposedGrade}
+                  <span className="block text-ink/60">{SANCTIONS[alert.proposedGrade]}</span>
+                </Td>
+                <Td className={cn('whitespace-nowrap', alert.status === 'pendiente' && 'font-semibold text-danger')}>
+                  {STATUS_LABELS[alert.status]}
+                </Td>
+                <Td className="whitespace-nowrap">
+                  <div className="flex gap-1">
+                    {alert.status === 'pendiente' && (
+                      <>
+                        <button
+                          type="button"
+                          className={rowAction}
+                          title="Confirmar falta"
+                          aria-label="Confirmar falta"
+                          onClick={() => act(alert, 'confirm', `¿Confirmar falta de grado ${alert.proposedGrade}: ${SANCTIONS[alert.proposedGrade]}?`)}
+                        >
+                          <Check size={16} />
+                        </button>
+                        <button type="button" className={rowAction} title="Descartar" aria-label="Descartar" onClick={() => act(alert, 'dismiss', '¿Descartar esta alerta? No se volverá a proponer.')}>
+                          <X size={16} />
+                        </button>
+                      </>
+                    )}
+                    {alert.blockActive && (
+                      <button type="button" className={rowAction} title="Levantar bloqueo" aria-label="Levantar bloqueo" onClick={() => act(alert, 'lift', '¿Levantar el bloqueo de esta falta?')}>
+                        <ShieldOff size={16} />
+                      </button>
+                    )}
+                  </div>
+                </Td>
+              </tr>
+            ))}
+          </tbody>
+        </TableFrame>
+      )}
+    </Card>
+  );
+}
+
+function CommissionsTable({ cuts }: { cuts: CutResult[] }) {
+  return (
+    <TableFrame>
+      <thead>
+        <tr className="border-b border-border">
+          <Th>Concepto (USD)</Th>
+          {cuts.map((cut) => (
+            <Th key={cut.label} right>
+              {cut.label}
+              <span className="block text-ink/60 normal-case tracking-normal">{cut.date}</span>
+            </Th>
+          ))}
+        </tr>
+      </thead>
+      <tbody>
+        {COMMISSION_ROWS.map((row) => (
+          <tr key={row.key} className={cn('border-b border-border/50 last:border-b-0', row.strong && 'font-semibold')}>
+            <Td>{row.label}</Td>
+            {cuts.map((cut) => (
+              <Td key={cut.label} right>
+                {row.key === 'baseCapital' || row.key === 'threshold' ? money(cut[row.key]) : <SignedMoney value={cut[row.key] as number} />}
+              </Td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </TableFrame>
+  );
 }
 
 function ReportCell({ position, run }: { position: PositionView; run: (action: () => Promise<unknown>) => Promise<void> }) {
@@ -247,13 +389,14 @@ export function TraderProfile({
   }
 
   const lastCut = detail.commissions?.cuts.at(-1);
+  const carriedNet = detail.carried.reduce((sum, cycle) => sum + (cycle.commissions.cuts.at(-1)?.net ?? 0), 0);
   const saveName = () => run(() => api(`/api/traders/${traderId}`, 'PATCH', { name }));
 
   const stats = [
     { label: 'Total recomendado (USD)', value: <>{money(detail.totalRecommended)}</> },
     { label: 'Umbral de pérdida, 10% (USD)', value: <>{money(detail.totalRecommended * 0.1)}</> },
     { label: 'Resultado neto a mercado (USD)', value: lastCut ? <SignedMoney value={lastCut.marketResult} /> : 'Sin calcular' },
-    { label: 'Consolidado a cobrar o deber (USD)', value: lastCut ? <SignedMoney value={lastCut.net} /> : 'Sin calcular' },
+    { label: 'Consolidado a cobrar o deber (USD)', value: lastCut ? <SignedMoney value={lastCut.net + carriedNet} /> : 'Sin calcular' },
   ];
 
   return (
@@ -270,6 +413,8 @@ export function TraderProfile({
           Guardar nombre
         </button>
       </div>
+
+      <AlertsCard alerts={detail.alerts} blocked={detail.blocked} run={run} />
 
       <dl className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
         {stats.map((stat) => (
@@ -302,10 +447,19 @@ export function TraderProfile({
               </tr>
             </thead>
             <tbody>
-              {detail.positions.map((position) => (
+              {detail.positions.map((position) => {
+                const alert = detail.alerts.find((a) => a.positionId === position.id && a.status !== 'descartada');
+                return (
                 <tr key={position.id} className="border-b border-border/50 last:border-b-0">
                   <Td>
-                    <span className="font-mono text-accent">{position.ticker}</span>
+                    <span className="flex items-center gap-1">
+                      <span className="font-mono text-accent">{position.ticker}</span>
+                      {alert && (
+                        <TriangleAlert size={13} className="text-danger shrink-0" role="img" aria-label={EVENT_INFO[alert.event].label}>
+                          <title>{`${EVENT_INFO[alert.event].label}. ${alert.detail}`}</title>
+                        </TriangleAlert>
+                      )}
+                    </span>
                     <AnalystRatingsHover symbol={position.ticker}>{position.companyName}</AnalystRatingsHover>
                   </Td>
                   <Td className="whitespace-nowrap font-mono">{position.buyDate}</Td>
@@ -363,7 +517,8 @@ export function TraderProfile({
                     </div>
                   </Td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </TableFrame>
         )}
@@ -393,40 +548,16 @@ export function TraderProfile({
             {detail.commissions.cuts.length === 0 && !detail.commissions.incomplete ? (
               <p className="text-sm text-ink/60">El ciclo aún no ha comenzado.</p>
             ) : (
-              detail.commissions.cuts.length > 0 && (
-                <TableFrame>
-                  <thead>
-                    <tr className="border-b border-border">
-                      <Th>Concepto (USD)</Th>
-                      {detail.commissions.cuts.map((cut) => (
-                        <Th key={cut.label} right>
-                          {cut.label}
-                          <span className="block text-ink/60 normal-case tracking-normal">{cut.date}</span>
-                        </Th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {COMMISSION_ROWS.map((row) => (
-                      <tr key={row.key} className={cn('border-b border-border/50 last:border-b-0', row.strong && 'font-semibold')}>
-                        <Td>{row.label}</Td>
-                        {detail.commissions!.cuts.map((cut) => (
-                          <Td key={cut.label} right>
-                            {row.key === 'baseCapital' || row.key === 'threshold' ? (
-                              money(cut[row.key])
-                            ) : (
-                              <SignedMoney value={cut[row.key] as number} />
-                            )}
-                          </Td>
-                        ))}
-                      </tr>
-                    ))}
-                  </tbody>
-                </TableFrame>
-              )
+              detail.commissions.cuts.length > 0 && <CommissionsTable cuts={detail.commissions.cuts} />
             )}
+            {detail.carried.map((cycle) => (
+              <div key={cycle.cycleStart} className="space-y-2">
+                <p className="text-xs font-semibold">Ciclo iniciado el {cycle.cycleStart}, con saldo que continúa</p>
+                <CommissionsTable cuts={cycle.commissions.cuts} />
+              </div>
+            ))}
             <p className="text-xs text-ink/60">
-              Los cortes usan el precio de cierre de su fecha. La proyección usa el precio actual de Yahoo Finance y cambia con el mercado.
+              Los cortes se registran solos al pasar cada fecha, con el precio de cierre de ese día, y ya no cambian. La proyección usa el precio actual de Yahoo Finance y cambia con el mercado.
             </p>
           </>
         )}

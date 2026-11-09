@@ -1,5 +1,5 @@
 import { ApiError, assertSaleAfterBuy, jsonBody, parsePastDate, parsePositive, route } from '@/src/lib/api';
-import { loadPosition, savePosition } from '@/src/lib/positions';
+import { assertWithinOperatorLimit, loadPosition, savePosition } from '@/src/lib/positions';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +36,11 @@ export const PATCH = route<Context>(async (req, { params }) => {
       changes.sell_date = parsePastDate(body.sellDate, 'La fecha de venta');
       assertSaleAfterBuy(changes.buy_date as string, changes.sell_date as string);
     }
+    await assertWithinOperatorLimit(
+      current.trader_id,
+      { buyDate: changes.buy_date as string, buyPrice: changes.buy_price as number, shares: changes.shares as number },
+      id,
+    );
     await savePosition(id, changes);
     return;
   }

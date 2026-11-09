@@ -12,7 +12,9 @@
 export const THRESHOLD_RATE = 0.1;
 export const SHARE_RATE = 0.2;
 export const CYCLE_MONTHS = 12;
-export const CUT_MONTHS = [6, 12];
+export const CUT_INTERVAL_MONTHS = 6;
+export const MAX_RECOMMENDED_USD = 200000;
+export const MAX_POSITION_USD = 40000;
 
 export interface EnginePosition {
   ticker: string;
@@ -69,10 +71,23 @@ export function addMonths(date: string, months: number): string {
 
 export const cycleEnd = (cycleStart: string) => addMonths(cycleStart, CYCLE_MONTHS);
 
+// The end date is exclusive: it is the first day of the next cycle.
 export const isInCycle = (buyDate: string, cycleStart: string) =>
-  buyDate >= cycleStart && buyDate <= cycleEnd(cycleStart);
+  buyDate >= cycleStart && buyDate < cycleEnd(cycleStart);
 
 export const positionCost = (p: Pick<EnginePosition, 'buyPrice' | 'shares'>) => round2(p.buyPrice * p.shares);
+
+type Allocation = Pick<EnginePosition, 'buyDate' | 'buyPrice' | 'shares'>;
+
+/** Section 7 of the Manual: an operator's recommendations in the cycle cannot exceed the maximum. */
+export function withinOperatorLimit(existing: Allocation[], candidate: Allocation, cycleStart: string | null): boolean {
+  const counts = (p: Allocation) => cycleStart === null || isInCycle(p.buyDate, cycleStart);
+  if (!counts(candidate)) return true;
+  return existing.filter(counts).reduce((sum, p) => sum + positionCost(p), positionCost(candidate)) <= MAX_RECOMMENDED_USD;
+}
+
+/** Section 7 of the Manual: no position can exceed 20% of the maximum per operator. */
+export const withinPositionLimit = (candidate: Allocation) => positionCost(candidate) <= MAX_POSITION_USD;
 
 export const isOpenOn = (p: EnginePosition, date: string) =>
   p.buyDate <= date && (p.sellDate === null || p.sellDate > date);
@@ -86,22 +101,31 @@ export interface ScheduledCut {
 /**
  * A cut is final once its date has passed, so its closing price exists.
  * The projection values the cycle at today's price until the cycle ends.
+ * Past month 12 the cycle keeps its semiannual cuts while it has open positions,
+ * so their retention stays until they are sold or recover (section 3).
  */
-export function cycleSchedule(cycleStart: string, today: string): ScheduledCut[] {
-  const cuts = CUT_MONTHS.map((months, i) => ({
-    label: `Corte ${i + 1} (mes ${months})`,
-    date: addMonths(cycleStart, months),
-  }));
-  const schedule: ScheduledCut[] = cuts
-    .filter((cut) => cut.date < today)
-    .map((cut) => ({ ...cut, kind: 'final' as const }));
-  if (schedule.length < cuts.length && cycleStart <= today) {
-    schedule.push({ label: 'Proyección a hoy', date: today, kind: 'projection' });
+export function cycleSchedule(cycleStart: string, today: string, cohort: EnginePosition[] = []): ScheduledCut[] {
+  if (cycleStart > today) return [];
+  const schedule: ScheduledCut[] = [];
+  for (let n = 1; ; n++) {
+    const months = n * CUT_INTERVAL_MONTHS;
+    const date = addMonths(cycleStart, months);
+    if (date >= today) {
+      schedule.push({ label: 'Proyección a hoy', date: today, kind: 'projection' });
+      return schedule;
+    }
+    schedule.push({ label: `Corte ${n} (mes ${months})`, date, kind: 'final' });
+    if (months >= CYCLE_MONTHS && !cohort.some((p) => isOpenOn(p, date))) return schedule;
   }
-  return schedule;
 }
 
-export function computeCycle(positions: EnginePosition[], cycleStart: string, cuts: CutInput[]): CycleResult {
+/** `frozen` holds the cuts already recorded: they are kept as they were and seed the next cut. */
+export function computeCycle(
+  positions: EnginePosition[],
+  cycleStart: string,
+  cuts: CutInput[],
+  frozen: CutResult[] = [],
+): CycleResult {
   const scoped = positions.filter((p) => isInCycle(p.buyDate, cycleStart));
   const results: CutResult[] = [];
 
@@ -111,6 +135,16 @@ export function computeCycle(positions: EnginePosition[], cycleStart: string, cu
   let paidTotal = 0;
 
   for (const cut of cuts) {
+    const recorded = frozen.find((f) => f.date === cut.date);
+    if (recorded) {
+      results.push(recorded);
+      previousDate = cut.date;
+      pending = recorded.pendingAfter;
+      discountCum = recorded.discountCum;
+      paidTotal = recorded.paidTotal;
+      continue;
+    }
+
     const held = scoped.filter((p) => p.buyDate <= cut.date);
     const sold = held.filter((p) => !isOpenOn(p, cut.date));
     const open = held.filter((p) => isOpenOn(p, cut.date));

@@ -1,10 +1,30 @@
 import type { CycleResult } from './commissions';
+import type { AlertStatus, RiskEvent } from './risk';
 
 export interface TraderSummary {
   id: number;
   name: string;
   totalRecommended: number;
   openPositions: number;
+  pendingAlerts: number;
+  blocked: boolean;
+}
+
+export interface RiskAlert {
+  id: string;
+  positionId: string | null;
+  ticker: string | null;
+  event: RiskEvent;
+  eventDate: string;
+  detail: string;
+  proposedGrade: number;
+  status: AlertStatus;
+  blockActive: boolean;
+}
+
+export interface CarriedCycle {
+  cycleStart: string;
+  commissions: CycleResult;
 }
 
 export interface TradersResponse {
@@ -36,6 +56,9 @@ export interface TraderDetail {
   totalRecommended: number;
   positions: PositionView[];
   commissions: CycleResult | null;
+  carried: CarriedCycle[];
+  alerts: RiskAlert[];
+  blocked: boolean;
 }
 
 export interface Movement {

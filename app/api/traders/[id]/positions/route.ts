@@ -1,5 +1,6 @@
 import { ApiError, db, jsonBody, parsePastDate, parsePositive, parseTraderId, route, unwrap } from '@/src/lib/api';
 import { getQuote } from '@/src/lib/market';
+import { assertNotBlocked, assertWithinOperatorLimit } from '@/src/lib/positions';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,6 +15,8 @@ export const POST = route<Context>(async (req, { params }) => {
   const buyPrice = parsePositive(body.buyPrice, 'El precio de compra');
   const shares = parsePositive(body.shares, 'El número de acciones');
   const buyDate = parsePastDate(body.buyDate, 'La fecha de compra');
+  await assertNotBlocked(traderId);
+  await assertWithinOperatorLimit(traderId, { buyDate, buyPrice, shares });
 
   // Name and currency always come from Yahoo Finance, never from the client.
   const quote = await getQuote(symbol);

@@ -1,15 +1,8 @@
 import { ApiError, db, jsonBody, parseTraderId, route, todayUtc, unwrap } from '@/src/lib/api';
-import {
-  computeCycle,
-  cycleEnd,
-  cycleSchedule,
-  isInCycle,
-  isOpenOn,
-  positionCost,
-  type CutInput,
-  type EnginePosition,
-} from '@/src/lib/commissions';
-import { getClosePrices, getLivePrices } from '@/src/lib/market';
+import { computeCohort, frozenCuts, type StoredCut } from '@/src/lib/cohorts';
+import { cycleEnd, isInCycle, positionCost, type EnginePosition } from '@/src/lib/commissions';
+import { getLivePrices } from '@/src/lib/market';
+import { BLOCKING_GRADE, isBlocked } from '@/src/lib/risk';
 import type { TraderDetail } from '@/src/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -19,10 +12,12 @@ type Context = { params: Promise<{ id: string }> };
 export const GET = route<Context>(async (_req, { params }): Promise<TraderDetail> => {
   const id = parseTraderId((await params).id);
   const client = db();
-  const [trader, settings, positionRows] = await Promise.all([
+  const [trader, settings, positionRows, cutRows, alertRows] = await Promise.all([
     client.from('traders').select('id, name').eq('id', id).single(),
     client.from('app_settings').select('cycle_start').eq('id', 1).single(),
     client.from('positions').select('*').eq('trader_id', id).is('deleted_at', null).order('buy_date', { ascending: false }),
+    client.from('commission_cuts').select('cycle_start, calculation').eq('trader_id', id),
+    client.from('risk_alerts').select('*').eq('trader_id', id).order('created_at', { ascending: false }),
   ]);
   const { name } = unwrap(trader);
   const cycleStart = unwrap(settings).cycle_start as string | null;
@@ -44,22 +39,18 @@ export const GET = route<Context>(async (_req, { params }): Promise<TraderDetail
   const livePrices = await getLivePrices(openTickers);
 
   const inCycle = (p: EnginePosition) => cycleStart === null || isInCycle(p.buyDate, cycleStart);
-  let commissions: TraderDetail['commissions'] = null;
+  const today = todayUtc();
+  const storedCuts = unwrap(cutRows) as StoredCut[];
+  const pastCycles = [...new Set(storedCuts.map((cut) => cut.cycle_start))].filter((start) => start !== cycleStart);
 
-  if (cycleStart) {
-    const today = todayUtc();
-    const scoped = positions.filter(inCycle);
-    const cuts: CutInput[] = await Promise.all(
-      cycleSchedule(cycleStart, today).map(async (cut) => ({
-        ...cut,
-        prices:
-          cut.kind === 'projection'
-            ? livePrices
-            : await getClosePrices(scoped.filter((p) => isOpenOn(p, cut.date)).map((p) => p.ticker), cut.date),
-      })),
-    );
-    commissions = computeCycle(positions, cycleStart, cuts);
-  }
+  const commissions = cycleStart ? await computeCohort(positions, cycleStart, today, frozenCuts(storedCuts, cycleStart), livePrices) : null;
+  const carried = await Promise.all(
+    pastCycles.map(async (start) => ({
+      cycleStart: start,
+      commissions: await computeCohort(positions, start, today, frozenCuts(storedCuts, start), livePrices),
+    })),
+  );
+  const alerts = unwrap(alertRows);
 
   return {
     id,
@@ -68,6 +59,19 @@ export const GET = route<Context>(async (_req, { params }): Promise<TraderDetail
     cycleEnd: cycleStart ? cycleEnd(cycleStart) : null,
     totalRecommended: positions.filter(inCycle).reduce((sum, p) => sum + positionCost(p), 0),
     commissions,
+    carried,
+    blocked: isBlocked(alerts),
+    alerts: alerts.map((alert) => ({
+      id: alert.id,
+      positionId: alert.position_id,
+      ticker: alert.ticker,
+      event: alert.event,
+      eventDate: alert.event_date,
+      detail: alert.detail,
+      proposedGrade: alert.proposed_grade,
+      status: alert.status,
+      blockActive: alert.status === 'confirmada' && alert.proposed_grade >= BLOCKING_GRADE && alert.block_lifted_at === null,
+    })),
     positions: positions.map((p) => {
       const marketPrice = p.sellDate === null ? (livePrices[p.ticker] ?? null) : null;
       const exitPrice = p.sellPrice ?? marketPrice;
@@ -76,7 +80,7 @@ export const GET = route<Context>(async (_req, { params }): Promise<TraderDetail
         total: positionCost(p),
         marketPrice,
         result: exitPrice === null ? null : Math.round((exitPrice - p.buyPrice) * p.shares * 100) / 100,
-        inCycle: inCycle(p),
+        inCycle: inCycle(p) || pastCycles.some((start) => isInCycle(p.buyDate, start)),
       };
     }),
   };
