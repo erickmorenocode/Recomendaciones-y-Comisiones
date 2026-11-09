@@ -11,6 +11,11 @@
   --color-danger: #b42318;
   --color-surface: #ffffff;
   --color-border: #d5d8e3;
+
+  /* Fault severity, used by the alert symbol. */
+  --color-grade-1: #facc15;
+  --color-grade-2: #f97316;
+  --color-grade-3: #dc2626;
 }
 
 @layer base {

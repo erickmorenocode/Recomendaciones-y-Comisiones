@@ -51,6 +51,12 @@ export interface DailySummary {
 
 const percent = (rate: number) => `${(rate * 100).toFixed(2)}%`;
 
+function previousDay(date: string): string {
+  const day = new Date(`${date}T00:00:00Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
+
 async function saveCut(
   traderId: number,
   cycleStart: string,
@@ -102,7 +108,7 @@ export async function runDailyCheck(today = todayUtc()): Promise<DailySummary> {
   const client = db();
   const [settings, positionRows, cutRows, alertRows] = await Promise.all([
     client.from('app_settings').select('cycle_start').eq('id', 1).single(),
-    client.from('positions').select('*').is('deleted_at', null).order('buy_date'),
+    client.from('positions').select('*').is('deleted_at', null).order('buy_date').order('id'),
     client.from('commission_cuts').select('trader_id, cycle_start, calculation'),
     client.from('risk_alerts').select('trader_id, position_id, cycle_start, event, status, dedupe_key'),
   ]);
@@ -132,12 +138,17 @@ export async function runDailyCheck(today = todayUtc()): Promise<DailySummary> {
     summary.alerts += 1;
   }
 
+  // The job runs at 15:00 Ecuador time, before NYSE closes for part of the year.
+  // The Manual measures on closing prices, so it uses the last complete session.
+  const closeDate = previousDay(today);
   const open = positions.filter((p) => p.sellDate === null);
-  const closes = await getClosePrices(open.map((p) => p.ticker), today);
+  const closes = await getClosePrices(open.map((p) => p.ticker), closeDate);
 
   // Events 3 and 3a: one position loses more than 20% of its purchase value,
   // at today's close or at the sale that closed it during this cycle.
   for (const p of positions.filter((row) => row.sellDate === null || isInCycle(row.buyDate, cycleStart))) {
+    // A close from before the purchase says nothing about this position.
+    if (p.sellDate === null && p.buyDate > closeDate) continue;
     const exitPrice = p.sellDate === null ? closes[p.ticker] : p.sellPrice;
     if (exitPrice == null || !breachesPositionLoss(p.buyPrice, exitPrice)) continue;
     const earlier = alerts.filter(

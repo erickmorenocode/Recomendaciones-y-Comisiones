@@ -3,13 +3,21 @@ import { infringedRule, RISK_EVENT_INFO, SANCTIONS } from '../../lib/risk';
 import type { AlertNote } from '../../lib/types';
 import { HoverPopover } from './HoverPopover';
 
-/** The warning triangle. Hovering it states which rule of the Manual was infringed. */
+const GRADE_FILL: Record<number, string> = {
+  1: 'fill-grade-1',
+  2: 'fill-grade-2',
+  3: 'fill-grade-3',
+};
+
+/** The warning triangle, colored by its most severe fault. Hovering it states which rule of the Manual was infringed. */
 export function AlertSymbol({ notes, footer, focusable = true }: { notes: AlertNote[]; footer?: string; focusable?: boolean }) {
+  const worstGrade = Math.max(...notes.map((note) => note.proposedGrade));
+
   return (
     <HoverPopover
       focusable={focusable}
       triggerLabel="Regla infringida"
-      triggerClassName="inline-flex shrink-0 cursor-help rounded p-0.5 text-danger focus:outline-none focus-visible:ring-1 focus-visible:ring-danger"
+      triggerClassName="inline-flex shrink-0 cursor-help rounded p-0.5 focus:outline-none focus-visible:ring-1 focus-visible:ring-accent"
       width={300}
       estimatedHeight={80 + notes.length * 110}
       content={
@@ -33,7 +41,7 @@ export function AlertSymbol({ notes, footer, focusable = true }: { notes: AlertN
         </>
       }
     >
-      <TriangleAlert size={14} />
+      <TriangleAlert size={16} className={GRADE_FILL[worstGrade]} />
     </HoverPopover>
   );
 }

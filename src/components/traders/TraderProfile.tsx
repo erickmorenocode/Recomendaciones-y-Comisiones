@@ -4,7 +4,7 @@ import { api, ApiClientError, errorMessage } from '../../lib/apiClient';
 import type { CutResult } from '../../lib/commissions';
 import { cn } from '../../lib/cn';
 import { reportFileError, reportUrl, uploadReport } from '../../lib/reports';
-import { breachesPositionLoss, positionLossRate, RISK_EVENT_INFO as EVENT_INFO, SANCTIONS } from '../../lib/risk';
+import { breachesPositionLoss, positionFaultGrade, positionLossRate, RISK_EVENT_INFO as EVENT_INFO, SANCTIONS } from '../../lib/risk';
 import type { Movement, PositionView, RiskAlert, TraderDetail } from '../../lib/types';
 import { AlertSymbol } from './AlertSymbol';
 import { AnalystRatingsHover } from './AnalystRatingsHover';
@@ -207,22 +207,39 @@ function CommissionsTable({ cuts }: { cuts: CutResult[] }) {
   );
 }
 
-/** Warns as soon as a loss shows up in the table, before the daily check records it. */
-function PositionAlert({ position, alerts }: { position: PositionView; alerts: RiskAlert[] }) {
-  const own = alerts.filter((a) => a.positionId === position.id);
-  const active = own.find((a) => a.status !== 'descartada');
-  if (active) return <AlertSymbol notes={[active]} />;
-
+function hasUnrecordedBreach(position: PositionView, alerts: RiskAlert[]) {
   const exitPrice = position.sellPrice ?? position.marketPrice;
-  if (own.length > 0 || !position.inCycle || exitPrice == null || !breachesPositionLoss(position.buyPrice, exitPrice)) return null;
+  return (
+    position.inCycle &&
+    exitPrice != null &&
+    breachesPositionLoss(position.buyPrice, exitPrice) &&
+    !alerts.some((a) => a.positionId === position.id)
+  );
+}
+
+/** Warns as soon as a loss shows up in the table, before the daily check records it. */
+function PositionAlert({ position, positions, alerts }: { position: PositionView; positions: PositionView[]; alerts: RiskAlert[] }) {
+  const active = alerts.find((a) => a.positionId === position.id && a.status !== 'descartada');
+  if (active) return <AlertSymbol notes={[active]} />;
+  if (!hasUnrecordedBreach(position, alerts)) return null;
+
+  const exitPrice = (position.sellPrice ?? position.marketPrice) as number;
   const lossPercent = (positionLossRate(position.buyPrice, exitPrice) * 100).toFixed(2);
+  // Same order as the daily check, so the warning matches the grade it will record.
+  const earlierFaults =
+    alerts.filter((a) => a.event === 'posicion_20' && a.status !== 'descartada').length +
+    positions.filter(
+      (p) =>
+        hasUnrecordedBreach(p, alerts) &&
+        (p.buyDate < position.buyDate || (p.buyDate === position.buyDate && p.id < position.id)),
+    ).length;
   return (
     <AlertSymbol
       notes={[
         {
           event: 'posicion_20',
           ticker: position.ticker,
-          proposedGrade: 1,
+          proposedGrade: positionFaultGrade(earlierFaults),
           detail: `${position.sellDate ? 'Vendida con pérdida de' : 'Pierde'} ${lossPercent}%: compra ${position.buyPrice}, ${position.sellDate ? 'venta' : 'precio actual'} ${exitPrice}`,
         },
       ]}
@@ -469,7 +486,7 @@ export function TraderProfile({
                   <Td>
                     <span className="flex items-center gap-1">
                       <span className="font-mono text-accent">{position.ticker}</span>
-                      <PositionAlert position={position} alerts={detail.alerts} />
+                      <PositionAlert position={position} positions={detail.positions} alerts={detail.alerts} />
                     </span>
                     <AnalystRatingsHover symbol={position.ticker}>{position.companyName}</AnalystRatingsHover>
                   </Td>
