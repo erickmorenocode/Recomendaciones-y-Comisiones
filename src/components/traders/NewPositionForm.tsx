@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { api, errorMessage } from '../../lib/apiClient';
 import { MAX_REPORT_MB, reportFileError, uploadReport } from '../../lib/reports';
-import type { CompanyOption } from '../../lib/types';
+import type { CompanyHolder, CompanyOption } from '../../lib/types';
 import { Card, Field, inputClass, money, primaryButton } from './ui';
 
 export function NewPositionForm({ traderId, onSaved }: { traderId: number; onSaved: () => Promise<void> }) {
   const [query, setQuery] = useState('');
   const [options, setOptions] = useState<CompanyOption[]>([]);
   const [company, setCompany] = useState<CompanyOption | null>(null);
+  const [holders, setHolders] = useState<CompanyHolder[]>([]);
   const [buyPrice, setBuyPrice] = useState('');
   const [shares, setShares] = useState('');
   const [buyDate, setBuyDate] = useState('');
@@ -34,6 +35,18 @@ export function NewPositionForm({ traderId, onSaved }: { traderId: number; onSav
     }, 300);
     return () => clearTimeout(timer);
   }, [query, company]);
+
+  useEffect(() => {
+    setHolders([]);
+    if (!company) return;
+    let active = true;
+    api<{ holders: CompanyHolder[] }>(`/api/market/holders?symbol=${encodeURIComponent(company.symbol)}&traderId=${traderId}`)
+      .then((response) => active && setHolders(response.holders))
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [company, traderId]);
 
   const total = Number(buyPrice) * Number(shares);
 
@@ -143,11 +156,23 @@ export function NewPositionForm({ traderId, onSaved }: { traderId: number; onSav
           </Field>
         </div>
         <div className="sm:col-span-2 xl:col-span-2">
-          <button type="submit" className={`${primaryButton} w-full`} disabled={saving}>
+          <button type="submit" className={`${primaryButton} w-full`} disabled={saving || holders.length > 0}>
             {saving ? 'Guardando...' : 'Registrar'}
           </button>
         </div>
       </form>
+      {holders.length > 0 && (
+        <div role="status" className="rounded-lg border border-danger bg-danger/5 px-3 py-2 text-xs text-danger">
+          <p className="font-semibold">{company?.symbol} ya está recomendada. No se puede registrar la compra. La tiene:</p>
+          <ul className="mt-1 space-y-0.5">
+            {holders.map((holder, index) => (
+              <li key={index}>
+                {holder.traderName} a USD {money(holder.buyPrice)}, comprada el {holder.buyDate}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <p className="text-xs text-ink/70">
         Total recomendado de esta compra: <span className="font-mono text-ink">USD {money(Number.isFinite(total) ? total : 0)}</span>
       </p>

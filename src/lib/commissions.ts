@@ -14,7 +14,17 @@ export const SHARE_RATE = 0.2;
 export const CYCLE_MONTHS = 12;
 export const CUT_INTERVAL_MONTHS = 6;
 export const MAX_RECOMMENDED_USD = 200000;
-export const MAX_POSITION_USD = 40000;
+export const MIN_BASE_LIMIT_USD = 25000;
+export const MAX_BASE_LIMIT_USD = 300000;
+
+/** The editable base limit must stay inside [MIN_BASE_LIMIT_USD, MAX_BASE_LIMIT_USD]. */
+export const isValidBaseLimit = (amount: number) =>
+  Number.isFinite(amount) && amount >= MIN_BASE_LIMIT_USD && amount <= MAX_BASE_LIMIT_USD;
+export const POSITION_SHARE_OF_LIMIT = 0.2;
+export const INCENTIVE_TIERS = [
+  { minReturn: 0.3, rate: 0.5 },
+  { minReturn: 0.15, rate: 0.2 },
+];
 
 export interface EnginePosition {
   ticker: string;
@@ -79,15 +89,40 @@ export const positionCost = (p: Pick<EnginePosition, 'buyPrice' | 'shares'>) => 
 
 type Allocation = Pick<EnginePosition, 'buyDate' | 'buyPrice' | 'shares'>;
 
-/** Section 7 of the Manual: an operator's recommendations in the cycle cannot exceed the maximum. */
-export function withinOperatorLimit(existing: Allocation[], candidate: Allocation, cycleStart: string | null): boolean {
+/** Section 7 of the Manual: an operator's recommendations in the cycle cannot exceed the limit. */
+export function withinOperatorLimit(
+  existing: Allocation[],
+  candidate: Allocation,
+  cycleStart: string | null,
+  limitUsd = MAX_RECOMMENDED_USD,
+): boolean {
   const counts = (p: Allocation) => cycleStart === null || isInCycle(p.buyDate, cycleStart);
   if (!counts(candidate)) return true;
-  return existing.filter(counts).reduce((sum, p) => sum + positionCost(p), positionCost(candidate)) <= MAX_RECOMMENDED_USD;
+  return existing.filter(counts).reduce((sum, p) => sum + positionCost(p), positionCost(candidate)) <= limitUsd;
 }
 
-/** Section 7 of the Manual: no position can exceed 20% of the maximum per operator. */
-export const withinPositionLimit = (candidate: Allocation) => positionCost(candidate) <= MAX_POSITION_USD;
+export const maxPositionUsd = (limitUsd: number) => round2(limitUsd * POSITION_SHARE_OF_LIMIT);
+
+/** Section 7 of the Manual: no position can exceed 20% of the operator's limit. */
+export const withinPositionLimit = (candidate: Allocation, limitUsd = MAX_RECOMMENDED_USD) =>
+  positionCost(candidate) <= maxPositionUsd(limitUsd);
+
+export const effectiveLimit = (baseUsd: number, incentiveRate: number) => round2(baseUsd * (1 + incentiveRate));
+
+/** Realized result of the cycle over everything recommended in it, sold or still open. */
+export function realizedReturn(
+  positions: Array<Allocation & { sellPrice: number | null }>,
+  cycleStart: string | null,
+): number {
+  const scoped = positions.filter((p) => cycleStart !== null && isInCycle(p.buyDate, cycleStart));
+  const base = scoped.reduce((sum, p) => sum + p.buyPrice * p.shares, 0);
+  if (base === 0) return 0;
+  const realized = scoped.reduce((sum, p) => sum + (p.sellPrice === null ? 0 : (p.sellPrice - p.buyPrice) * p.shares), 0);
+  return Math.round((realized / base) * 1e6) / 1e6;
+}
+
+/** "Superiores al 15%" and "supera el 30%", so returns of exactly 15% or 30% do not reach the tier. */
+export const incentiveRateFor = (returnRate: number) => INCENTIVE_TIERS.find((tier) => returnRate > tier.minReturn)?.rate ?? 0;
 
 export const isOpenOn = (p: EnginePosition, date: string) =>
   p.buyDate <= date && (p.sellDate === null || p.sellDate > date);

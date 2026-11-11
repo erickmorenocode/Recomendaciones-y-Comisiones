@@ -5,8 +5,11 @@ import {
   computeCycle,
   cycleEnd,
   cycleSchedule,
+  INCENTIVE_TIERS,
+  incentiveRateFor,
   isInCycle,
   isOpenOn,
+  realizedReturn,
   type CutInput,
   type CutResult,
   type EnginePosition,
@@ -45,6 +48,7 @@ type KnownAlert = Pick<AlertInput, 'trader_id' | 'position_id' | 'cycle_start' |
 export interface DailySummary {
   alerts: number;
   cuts: number;
+  incentives: number;
   cycleRolled: boolean;
   incomplete: string[];
 }
@@ -106,14 +110,15 @@ async function saveCut(
 
 export async function runDailyCheck(today = todayUtc()): Promise<DailySummary> {
   const client = db();
-  const [settings, positionRows, cutRows, alertRows] = await Promise.all([
+  const [settings, positionRows, cutRows, alertRows, traderRows] = await Promise.all([
     client.from('app_settings').select('cycle_start').eq('id', 1).single(),
     client.from('positions').select('*').is('deleted_at', null).order('buy_date').order('id'),
     client.from('commission_cuts').select('trader_id, cycle_start, calculation'),
     client.from('risk_alerts').select('trader_id, position_id, cycle_start, event, status, dedupe_key'),
+    client.from('traders').select('id, incentive_rate'),
   ]);
 
-  const summary: DailySummary = { alerts: 0, cuts: 0, cycleRolled: false, incomplete: [] };
+  const summary: DailySummary = { alerts: 0, cuts: 0, incentives: 0, cycleRolled: false, incomplete: [] };
   const cycleStart = unwrap(settings).cycle_start as string | null;
   if (!cycleStart) return summary;
 
@@ -234,6 +239,15 @@ export async function runDailyCheck(today = todayUtc()): Promise<DailySummary> {
         }
       }
     }
+  }
+
+  // The top incentive tier applies by itself; the lower one waits for a person to apply it.
+  const topRate = INCENTIVE_TIERS[0].rate;
+  for (const trader of unwrap(traderRows)) {
+    const own = positions.filter((p) => p.traderId === trader.id);
+    if ((trader.incentive_rate as number) >= topRate || incentiveRateFor(realizedReturn(own, cycleStart)) < topRate) continue;
+    unwrap(await client.from('traders').update({ incentive_rate: topRate }).eq('id', trader.id).select('id').single());
+    summary.incentives += 1;
   }
 
   // The next cycle starts once the last cut of this one is safely recorded.

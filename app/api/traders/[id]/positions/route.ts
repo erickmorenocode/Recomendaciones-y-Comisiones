@@ -1,6 +1,6 @@
 import { ApiError, db, jsonBody, parsePastDate, parsePositive, parseTraderId, route, unwrap } from '@/src/lib/api';
 import { getQuote } from '@/src/lib/market';
-import { assertNotBlocked, assertWithinOperatorLimit } from '@/src/lib/positions';
+import { assertCompanyFree, assertNotBlocked, assertWithinOperatorLimit } from '@/src/lib/positions';
 
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +24,7 @@ export const POST = route<Context>(async (req, { params }) => {
   if (quote.currency !== 'USD') {
     throw new ApiError(400, `${symbol} cotiza en ${quote.currency ?? 'otra moneda'}; el esquema se calcula en USD`);
   }
+  await assertCompanyFree(traderId, quote.symbol);
 
   return unwrap(
     await db()

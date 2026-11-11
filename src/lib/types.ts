@@ -28,6 +28,22 @@ export interface RiskAlert {
   blockActive: boolean;
 }
 
+export interface CompanyHolder {
+  traderName: string;
+  buyPrice: number;
+  buyDate: string;
+}
+
+export interface TraderLimit {
+  base: number;
+  incentiveRate: number;
+  effective: number;
+  maxPosition: number;
+  realizedReturn: number;
+  /** Tier the trader has earned, which can be above the one applied. */
+  earnedRate: number;
+}
+
 export interface CarriedCycle {
   cycleStart: string;
   commissions: CycleResult;
@@ -63,6 +79,7 @@ export interface TraderDetail {
   positions: PositionView[];
   commissions: CycleResult | null;
   carried: CarriedCycle[];
+  limit: TraderLimit;
   alerts: RiskAlert[];
   blocked: boolean;
 }

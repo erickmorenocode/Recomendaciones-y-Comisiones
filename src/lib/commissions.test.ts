@@ -5,7 +5,12 @@ import {
   addMonths,
   computeCycle,
   cycleSchedule,
+  effectiveLimit,
+  incentiveRateFor,
   isInCycle,
+  isValidBaseLimit,
+  maxPositionUsd,
+  realizedReturn,
   withinOperatorLimit,
   withinPositionLimit,
   type CutInput,
@@ -223,6 +228,47 @@ describe('section 7: maximum per position', () => {
   it('accepts exactly USD 40,000 and rejects anything above it', () => {
     assert.equal(withinPositionLimit({ buyDate: START, buyPrice: 40000, shares: 1 }), true);
     assert.equal(withinPositionLimit({ buyDate: START, buyPrice: 40000.01, shares: 1 }), false);
+  });
+});
+
+describe('limits per trader and incentive', () => {
+  const buy = (usd: number) => ({ buyDate: START, buyPrice: usd, shares: 1 });
+  const closed = (buyPrice: number, sellPrice: number | null) => ({ buyDate: START, buyPrice, shares: 1, sellPrice });
+
+  it('applies each trader limit and 20% of it per position', () => {
+    assert.equal(withinOperatorLimit([buy(900)], buy(100), START, 1000), true);
+    assert.equal(withinOperatorLimit([buy(900)], buy(101), START, 1000), false);
+    assert.equal(maxPositionUsd(1000), 200);
+    assert.equal(withinPositionLimit(buy(200), 1000), true);
+    assert.equal(withinPositionLimit(buy(200.01), 1000), false);
+  });
+
+  it('the base limit must be between 25,000 and 300,000', () => {
+    assert.equal(isValidBaseLimit(25000), true);
+    assert.equal(isValidBaseLimit(300000), true);
+    assert.equal(isValidBaseLimit(24999.99), false);
+    assert.equal(isValidBaseLimit(300000.01), false);
+    assert.equal(isValidBaseLimit(Number.NaN), false);
+  });
+
+  it('the incentive multiplies the base limit, without compounding', () => {
+    assert.equal(effectiveLimit(200000, 0), 200000);
+    assert.equal(effectiveLimit(200000, 0.2), 240000);
+    assert.equal(effectiveLimit(200000, 0.5), 300000);
+  });
+
+  it('tiers need a return above 15% and above 30%', () => {
+    assert.equal(incentiveRateFor(0.15), 0);
+    assert.equal(incentiveRateFor(0.150001), 0.2);
+    assert.equal(incentiveRateFor(0.3), 0.2);
+    assert.equal(incentiveRateFor(0.300001), 0.5);
+  });
+
+  it('return is realized gain over everything recommended, open positions included', () => {
+    assert.equal(realizedReturn([closed(100, 150), closed(100, null)], START), 0.25);
+    assert.equal(realizedReturn([closed(100, 50)], START), -0.5);
+    assert.equal(realizedReturn([{ ...closed(100, 200), buyDate: '2025-12-31' }], START), 0);
+    assert.equal(realizedReturn([closed(100, 200)], null), 0);
   });
 });
 

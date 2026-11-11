@@ -1,6 +1,15 @@
 import { ApiError, db, jsonBody, parseTraderId, route, todayUtc, unwrap } from '@/src/lib/api';
 import { computeCohort, frozenCuts, type StoredCut } from '@/src/lib/cohorts';
-import { cycleEnd, isInCycle, positionCost, type EnginePosition } from '@/src/lib/commissions';
+import {
+  cycleEnd,
+  effectiveLimit,
+  incentiveRateFor,
+  isInCycle,
+  maxPositionUsd,
+  positionCost,
+  realizedReturn,
+  type EnginePosition,
+} from '@/src/lib/commissions';
 import { getLivePrices } from '@/src/lib/market';
 import { BLOCKING_GRADE, isBlocked } from '@/src/lib/risk';
 import type { TraderDetail } from '@/src/lib/types';
@@ -13,13 +22,13 @@ export const GET = route<Context>(async (_req, { params }): Promise<TraderDetail
   const id = parseTraderId((await params).id);
   const client = db();
   const [trader, settings, positionRows, cutRows, alertRows] = await Promise.all([
-    client.from('traders').select('id, name').eq('id', id).single(),
+    client.from('traders').select('id, name, max_recommended, incentive_rate').eq('id', id).single(),
     client.from('app_settings').select('cycle_start').eq('id', 1).single(),
     client.from('positions').select('*').eq('trader_id', id).is('deleted_at', null).order('buy_date', { ascending: false }),
     client.from('commission_cuts').select('cycle_start, calculation').eq('trader_id', id),
     client.from('risk_alerts').select('*').eq('trader_id', id).order('created_at', { ascending: false }),
   ]);
-  const { name } = unwrap(trader);
+  const { name, max_recommended: baseLimit, incentive_rate: incentiveRate } = unwrap(trader);
   const cycleStart = unwrap(settings).cycle_start as string | null;
   const rows = unwrap(positionRows);
 
@@ -51,6 +60,8 @@ export const GET = route<Context>(async (_req, { params }): Promise<TraderDetail
     })),
   );
   const alerts = unwrap(alertRows);
+  const returnRate = realizedReturn(positions, cycleStart);
+  const limit = effectiveLimit(baseLimit, incentiveRate);
 
   return {
     id,
@@ -60,6 +71,14 @@ export const GET = route<Context>(async (_req, { params }): Promise<TraderDetail
     totalRecommended: positions.filter(inCycle).reduce((sum, p) => sum + positionCost(p), 0),
     commissions,
     carried,
+    limit: {
+      base: baseLimit,
+      incentiveRate,
+      effective: limit,
+      maxPosition: maxPositionUsd(limit),
+      realizedReturn: returnRate,
+      earnedRate: incentiveRateFor(returnRate),
+    },
     blocked: isBlocked(alerts),
     alerts: alerts.map((alert) => ({
       id: alert.id,

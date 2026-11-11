@@ -1,11 +1,11 @@
 import { Check, CircleDollarSign, FileText, LoaderCircle, Pencil, ShieldOff, Trash2, TriangleAlert, Undo2, Upload, X } from 'lucide-react';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, ApiClientError, errorMessage } from '../../lib/apiClient';
-import type { CutResult } from '../../lib/commissions';
+import { isValidBaseLimit, MAX_BASE_LIMIT_USD, MIN_BASE_LIMIT_USD, type CutResult } from '../../lib/commissions';
 import { cn } from '../../lib/cn';
 import { reportFileError, reportUrl, uploadReport } from '../../lib/reports';
 import { breachesPositionLoss, positionFaultGrade, positionLossRate, RISK_EVENT_INFO as EVENT_INFO, SANCTIONS } from '../../lib/risk';
-import type { Movement, PositionView, RiskAlert, TraderDetail } from '../../lib/types';
+import type { Movement, PositionView, RiskAlert, TraderDetail, TraderLimit } from '../../lib/types';
 import { AlertSymbol } from './AlertSymbol';
 import { AnalystRatingsHover } from './AnalystRatingsHover';
 import { NewPositionForm } from './NewPositionForm';
@@ -57,6 +57,8 @@ const FIELD_LABELS: Record<string, string> = {
   sell_date: 'Fecha de venta',
   name: 'Nombre',
   cycle_start: 'Inicio de ciclo',
+  max_recommended: 'Monto máximo (USD)',
+  incentive_rate: 'Incentivo sobre el límite',
 };
 
 const COMMISSION_ROWS: Array<{ label: string; key: keyof CutResult; strong?: boolean }> = [
@@ -173,6 +175,72 @@ function AlertsCard({
           </tbody>
         </TableFrame>
       )}
+    </Card>
+  );
+}
+
+function LimitCard({
+  traderId,
+  limit,
+  used,
+  run,
+}: {
+  traderId: number;
+  limit: TraderLimit;
+  used: number;
+  run: (action: () => Promise<unknown>) => Promise<void>;
+}) {
+  const [amount, setAmount] = useState(String(limit.base));
+  const percent = (rate: number) => `${money(rate * 100)}%`;
+  const figures = [
+    { label: 'Límite vigente (USD)', value: money(limit.effective) },
+    { label: 'Disponible (USD)', value: money(Math.max(0, limit.effective - used)) },
+    { label: 'Máximo por posición, 20% (USD)', value: money(limit.maxPosition) },
+    { label: 'Rentabilidad realizada del ciclo', value: percent(limit.realizedReturn) },
+  ];
+
+  return (
+    <Card title="Límite de recomendación">
+      <div className="flex flex-wrap items-end gap-3">
+        <div className="min-w-48 max-w-xs flex-1">
+          <Field label={`Monto máximo base (USD ${money(MIN_BASE_LIMIT_USD)} a ${money(MAX_BASE_LIMIT_USD)})`}>
+            <input
+              className={inputClass}
+              type="number"
+              min={MIN_BASE_LIMIT_USD}
+              max={MAX_BASE_LIMIT_USD}
+              step="any"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+            />
+          </Field>
+        </div>
+        <button
+          type="button"
+          className={secondaryButton}
+          disabled={amount === '' || Number(amount) === limit.base || !isValidBaseLimit(Number(amount))}
+          onClick={() => run(() => api(`/api/traders/${traderId}/limit`, 'PATCH', { action: 'set', amount }))}
+        >
+          Guardar monto
+        </button>
+        {limit.earnedRate > limit.incentiveRate && (
+          <button type="button" className={primaryButton} onClick={() => run(() => api(`/api/traders/${traderId}/limit`, 'PATCH', { action: 'apply_incentive' }))}>
+            Aplicar aumento de {money(limit.earnedRate * 100).replace('.00', '')}%
+          </button>
+        )}
+      </div>
+      <dl className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+        {figures.map((figure) => (
+          <div key={figure.label}>
+            <dd className="font-mono">{figure.value}</dd>
+            <dt className="text-xs text-ink/60">{figure.label}</dt>
+          </div>
+        ))}
+      </dl>
+      <p className="text-xs text-ink/60">
+        {limit.incentiveRate > 0 ? `Incentivo activo: +${money(limit.incentiveRate * 100).replace('.00', '')}% sobre el monto base. ` : ''}
+        Con rentabilidad realizada superior a 15% se desbloquea un aumento de 20%. Superior a 30%, el límite sube 50% en la revisión diaria.
+      </p>
     </Card>
   );
 }
@@ -457,6 +525,8 @@ export function TraderProfile({
           </div>
         ))}
       </dl>
+
+      <LimitCard key={`${detail.limit.base}`} traderId={traderId} limit={detail.limit} used={detail.totalRecommended} run={run} />
 
       <NewPositionForm traderId={traderId} onSaved={refreshAfterChange} />
 

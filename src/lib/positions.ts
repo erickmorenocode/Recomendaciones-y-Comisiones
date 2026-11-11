@@ -1,6 +1,6 @@
 // Server only: shared access to position rows for the API routes.
 import { ApiError, db, unwrap } from './api';
-import { MAX_POSITION_USD, MAX_RECOMMENDED_USD, withinOperatorLimit, withinPositionLimit, type EnginePosition } from './commissions';
+import { effectiveLimit, maxPositionUsd, withinOperatorLimit, withinPositionLimit, type EnginePosition } from './commissions';
 import { isBlocked } from './risk';
 
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -21,20 +21,48 @@ export async function assertWithinOperatorLimit(
   candidate: Pick<EnginePosition, 'buyDate' | 'buyPrice' | 'shares'>,
   excludeId?: string,
 ) {
-  if (!withinPositionLimit(candidate)) {
-    throw new ApiError(400, `Una posición no puede superar USD ${MAX_POSITION_USD.toLocaleString('en-US')}, el 20% del máximo por operador`);
-  }
   const client = db();
-  const [settings, rows] = await Promise.all([
+  const [trader, settings, rows] = await Promise.all([
+    client.from('traders').select('max_recommended, incentive_rate').eq('id', traderId).single(),
     client.from('app_settings').select('cycle_start').eq('id', 1).single(),
     client.from('positions').select('id, buy_date, buy_price, shares').eq('trader_id', traderId).is('deleted_at', null),
   ]);
+  const { max_recommended: base, incentive_rate: incentive } = unwrap(trader);
+  const limit = effectiveLimit(base as number, incentive as number);
+  const usd = (value: number) => value.toLocaleString('en-US');
+  if (!withinPositionLimit(candidate, limit)) {
+    throw new ApiError(400, `Una posición no puede superar USD ${usd(maxPositionUsd(limit))}, el 20% del límite de este operador`);
+  }
+
   const existing = unwrap(rows)
     .filter((row) => row.id !== excludeId)
     .map((row) => ({ buyDate: row.buy_date as string, buyPrice: row.buy_price as number, shares: row.shares as number }));
-  if (!withinOperatorLimit(existing, candidate, unwrap(settings).cycle_start as string | null)) {
-    throw new ApiError(400, `Supera el máximo de USD ${MAX_RECOMMENDED_USD.toLocaleString('en-US')} recomendados por operador`);
+  if (!withinOperatorLimit(existing, candidate, unwrap(settings).cycle_start as string | null, limit)) {
+    throw new ApiError(400, `Supera el límite de USD ${usd(limit)} recomendados de este operador`);
   }
+}
+
+/** A company held open by another trader cannot be recommended again. */
+export async function assertCompanyFree(traderId: number, ticker: string) {
+  const client = db();
+  const [positions, traders] = await Promise.all([
+    client
+      .from('positions')
+      .select('trader_id, buy_price')
+      .eq('ticker', ticker)
+      .neq('trader_id', traderId)
+      .is('sell_date', null)
+      .is('deleted_at', null)
+      .order('buy_date'),
+    client.from('traders').select('id, name'),
+  ]);
+  const held = unwrap(positions);
+  if (held.length === 0) return;
+  const names = new Map(unwrap(traders).map((trader) => [trader.id as number, trader.name as string]));
+  const who = held
+    .map((row) => `${names.get(row.trader_id as number) ?? `Trader ${row.trader_id}`} a USD ${(row.buy_price as number).toLocaleString('en-US', { minimumFractionDigits: 2 })}`)
+    .join(', ');
+  throw new ApiError(409, `${ticker} ya está recomendada por ${who}. No se puede registrar la compra`);
 }
 
 export async function assertNotBlocked(traderId: number) {

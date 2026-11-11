@@ -19,7 +19,7 @@ const KEY_RULES = [
   { value: '20%', label: 'Participación del operador en ganancias y pérdidas' },
   { value: '10%', label: 'Umbral de pérdida sobre el capital original del ciclo' },
   { value: '6 meses', label: 'Fechas de corte: mes 6 y mes 12 de cada ciclo' },
-  { value: 'USD 200,000', label: 'Monto máximo recomendado por operador' },
+  { value: 'USD 200,000', label: 'Monto máximo recomendado por operador, editable en cada perfil' },
 ];
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
@@ -486,8 +486,23 @@ export function Manual() {
             la sección 2 es de USD 20,000.
           </P>
           <P>
-            Concentración máxima por posición: ninguna posición puede representar más del 20% del total recomendado al
-            momento de la compra (hasta USD 40,000 con el monto máximo).
+            Concentración máxima por posición: ninguna posición puede superar el 20% del límite vigente del operador
+            (hasta USD 40,000 con el monto máximo de USD 200,000).
+          </P>
+          <P>
+            El monto máximo es editable y específico para cada operador, entre USD 25,000 y USD 300,000; el de USD
+            200,000 es el valor inicial.
+          </P>
+          <P>
+            Empresa única: no se puede recomendar una empresa que otro operador mantiene abierta. El sistema muestra quién
+            la tiene y a qué precio, y no permite registrar la compra hasta que esa posición se venda.
+          </P>
+          <Subheading>Incentivo por rentabilidad</Subheading>
+          <P>
+            La rentabilidad es el resultado realizado del ciclo dividido entre el total recomendado en ese ciclo. Con una
+            rentabilidad superior al 15% se desbloquea la posibilidad de aumentar el límite de recomendaciones en un 20%.
+            Con una rentabilidad superior al 30%, el límite aumenta en un 50%. Los aumentos se calculan sobre el monto
+            máximo base del operador y no se acumulan entre sí.
           </P>
           <Subheading>Cierres obligatorios y faltas</Subheading>
           <Table
